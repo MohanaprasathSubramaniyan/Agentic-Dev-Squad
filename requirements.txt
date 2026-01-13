@@ -1,0 +1,9 @@
+langgraph
+langchain
+langchain-groq
+langchain-community
+python-dotenv
+docker
+pydantic
+termcolor
+tavily-python
