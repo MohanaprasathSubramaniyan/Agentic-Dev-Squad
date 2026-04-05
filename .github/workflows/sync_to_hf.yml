@@ -1,0 +1,31 @@
+name: Sync to Hugging Face hub
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install dependencies
+        run: pip install huggingface_hub
+        
+      - name: Sync via Python API
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -c "
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi()
+          api.upload_folder(
+              folder_path='.',
+              repo_id='Mohanaprasath/Agentic-Dev-Squad',
+              repo_type='space',
+              token=os.environ.get('HF_TOKEN'),
+              ignore_patterns=['.git/*', '.github/*', '.devcontainer/*', '__pycache__/*']
+          )
+          "
