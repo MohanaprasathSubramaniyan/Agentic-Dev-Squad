@@ -1,3 +1,7 @@
+chainlit
+crewai
+langchain
+docker
 langgraph
 langchain
 langchain-groq
