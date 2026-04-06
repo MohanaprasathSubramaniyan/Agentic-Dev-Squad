@@ -11,3 +11,4 @@ docker
 pydantic
 termcolor
 tavily-python
+pandas
