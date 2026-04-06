@@ -12,3 +12,5 @@ pydantic
 termcolor
 tavily-python
 pandas
+matplotlib
+aiosqlite
