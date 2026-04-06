@@ -3,7 +3,7 @@ import os
 import shutil
 import sqlite3
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
-from langgraph.checkpoint.memory import MemorySaver  # <--- SWITCH TO MEMORY SAVER
+from langgraph.checkpoint.memory import MemorySaver 
 from main import workflow
 
 # --- CONFIGURATION ---
@@ -39,26 +39,27 @@ init_db()
 def get_data_layer():
     return SQLAlchemyDataLayer(conninfo=CHAINLIT_CONN_STRING)
 
-@cl.password_auth_callback
-def auth_callback(username, password):
-    if username == "admin" and password == "password":
-        return cl.User(identifier="admin", metadata={"role": "admin", "provider": "credentials"})
-    return None
+# --- AUTHENTICATION REMOVED ---
+# The @cl.password_auth_callback block has been deleted to allow public access.
 
 os.makedirs("data", exist_ok=True)
 
 # --- GLOBAL MEMORY ---
-# We initialize the memory once when the app starts
 memory = MemorySaver()
 
 @cl.on_chat_start
 async def start():
-    user = cl.user_session.get("user")
+    # Since login is removed, we set a default identifier
+    user_display_name = "Admin" 
+    
     thread_id = cl.context.session.id
     cl.user_session.set("thread_id", thread_id)
     cl.user_session.set("current_file", None)
     
-    await cl.Message(author="Agent Squad", content=f"**Hello {user.identifier}!** 👋\n\nI am your AI Data Team.\nAsk me to analyze your data!").send()
+    await cl.Message(
+        author="Agent Squad", 
+        content=f"**Hello {user_display_name}!** 👋\n\nI am your AI Data Team.\nUpload a file and ask me to analyze your data!"
+    ).send()
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -72,17 +73,18 @@ async def main(message: cl.Message):
 
     current_file = cl.user_session.get("current_file")
     if current_file:
-        file_path = f"/mnt/data/{current_file}"
+        file_path = f"data/{current_file}"
         data_context = (
             f"\n\nCONTEXT: Dataset at '{file_path}'. "
             f"file_path = '{file_path}'. "
-            "Do NOT use sample data. Save charts to '/mnt/data/chart.png'. Do NOT use plt.show()."
+            "Do NOT use sample data. Save charts to 'data/chart.png'. Do NOT use plt.show()."
         )
     else:
         data_context = "\n\nCONTEXT: Ask the user to upload a file first."
 
     task = message.content + data_context
-    if os.path.exists("data/chart.png"): os.remove("data/chart.png")
+    if os.path.exists("data/chart.png"): 
+        os.remove("data/chart.png")
     
     await cl.Message(author="Manager", content=f"Starting task...").send()
     
@@ -90,7 +92,6 @@ async def main(message: cl.Message):
     config = {"configurable": {"thread_id": thread_id}}
     
     # COMPILE WITH MEMORY SAVER
-    # This uses RAM instead of a file, bypassing the 'is_alive' bug.
     app = workflow.compile(checkpointer=memory)
     
     async for output in app.astream({"task": task}, config=config):
