@@ -11,7 +11,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from main import workflow
 
 # --- CONFIGURATION ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = "/home/user/app" # Fixed Hugging Face Path
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -45,7 +45,7 @@ memory = MemorySaver()
 async def start():
     cl.user_session.set("thread_id", cl.context.session.id)
     cl.user_session.set("current_file", None)
-    await cl.Message(author="Agent Squad", content="**Engine Active.** 🚀\nReady for data visualization.").send()
+    await cl.Message(author="Agent Squad", content="**Engine Active.** 🚀\nI'm ready to visualize your data.").send()
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -57,29 +57,29 @@ async def main(message: cl.Message):
         await cl.Message(author="System", content=f"📂 **File Uploaded:** `{file_element.name}`").send()
 
     current_file = cl.user_session.get("current_file")
-    abs_chart_path = os.path.join(DATA_DIR, "chart.png")
     
-    if os.path.exists(abs_chart_path):
-        os.remove(abs_chart_path)
+    # Create a unique path for THIS specific chart request
+    chart_filename = f"chart_{int(time.time())}.png"
+    abs_chart_path = os.path.join(DATA_DIR, chart_filename)
 
     if current_file:
         abs_data_path = os.path.join(DATA_DIR, current_file)
         try:
             df_temp = pd.read_csv(abs_data_path, nrows=1)
-            col_info = f"Columns: {df_temp.columns.tolist()}."
+            col_info = f"Columns available: {df_temp.columns.tolist()}."
         except:
             col_info = ""
 
         data_context = (
-            f"\n\nCONTEXT: Data at '{abs_data_path}'. {col_info} "
-            f"STRICT: Save plot to '{abs_chart_path}'. Use 'plt.savefig' and 'plt.close()'. "
-            "DO NOT use 'if __name__ == \"__main__\":'. Write straight-line code that executes immediately."
+            f"\n\nCONTEXT: Use the dataset at '{abs_data_path}'. {col_info} "
+            f"STRICT INSTRUCTION: You MUST save your plot to exactly '{abs_chart_path}'. "
+            "Use 'plt.savefig' and 'plt.close()'. Write only straight-line execution code."
         )
     else:
-        data_context = "\n\nCONTEXT: Ask for a file."
+        data_context = "\n\nCONTEXT: Ask the user to upload a file."
 
     task = message.content + data_context
-    await cl.Message(author="Manager", content="Processing...").send()
+    await cl.Message(author="Manager", content="Processing request...").send()
     
     config = {"configurable": {"thread_id": cl.user_session.get("thread_id")}}
     app = workflow.compile(checkpointer=memory)
@@ -96,26 +96,27 @@ async def main(message: cl.Message):
                     with open(script_path, "w") as f:
                         f.write(clean_code)
                     
-                    # RUN AND CAPTURE LOGS
                     proc = subprocess.run([sys.executable, script_path], capture_output=True, text=True, timeout=30)
                     if proc.stderr:
-                        await cl.Message(author="System", content=f"❌ **Script Error:**\n{proc.stderr}").send()
+                        await cl.Message(author="System", content=f"❌ **Python Error:**\n{proc.stderr}").send()
+                    if proc.stdout:
+                        await cl.Message(author="System", content=f"💬 **Output:**\n{proc.stdout}").send()
                 except Exception as e:
-                    await cl.Message(author="System", content=f"⚠️ **Execution Failed:** {str(e)}").send()
+                    await cl.Message(author="System", content=f"⚠️ **Fail:** {str(e)}").send()
             
             elif node_name == "executor":
-                # WAIT FOR DISK SYNC
+                # Final attempt to find the chart
                 found = False
-                for _ in range(10):
+                for _ in range(15): # Wait up to 7.5 seconds
                     if os.path.exists(abs_chart_path):
                         found = True
                         break
                     time.sleep(0.5)
 
                 if found:
-                    image = cl.Image(path=abs_chart_path, name="chart", display="inline")
-                    await cl.Message(author="Executor", content="📊 **Here is your chart:**", elements=[image]).send()
+                    image = cl.Image(path=abs_chart_path, name="Chart", display="inline")
+                    await cl.Message(author="Executor", content="📊 **Analysis Results:**", elements=[image]).send()
                 else:
-                    await cl.Message(author="Executor", content="✅ **Task complete, but no image was generated.**").send()
+                    await cl.Message(author="Executor", content="✅ **Analysis complete, but no chart was saved to the disk.**").send()
     
     await cl.Message(author="Manager", content="Finished.").send()
