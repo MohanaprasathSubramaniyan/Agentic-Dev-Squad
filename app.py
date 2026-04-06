@@ -6,7 +6,7 @@ import subprocess
 import sys
 import pandas as pd
 import time
-from chainlit.data.sql_alchemy import SQLAlchemyDataLayer # <--- ADD THIS LINE
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from langgraph.checkpoint.memory import MemorySaver 
 from main import workflow
 
@@ -18,7 +18,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 CHAINLIT_DB_PATH = os.path.join(BASE_DIR, "chainlit.db")
 CHAINLIT_CONN_STRING = f"sqlite+aiosqlite:///{CHAINLIT_DB_PATH}"
 
-# --- DATABASE INIT ---
 def init_db():
     conn = sqlite3.connect(CHAINLIT_DB_PATH)
     c = conn.cursor()
@@ -40,16 +39,13 @@ init_db()
 def get_data_layer():
     return SQLAlchemyDataLayer(conninfo=CHAINLIT_CONN_STRING)
 
-# --- GLOBAL MEMORY ---
-from langgraph.checkpoint.memory import MemorySaver 
-from main import workflow
 memory = MemorySaver()
 
 @cl.on_chat_start
 async def start():
     cl.user_session.set("thread_id", cl.context.session.id)
     cl.user_session.set("current_file", None)
-    await cl.Message(author="Agent Squad", content="**Engine Ready.** 🚀\nUpload your data, and I'll generate the visualization for you.").send()
+    await cl.Message(author="Agent Squad", content="**Engine Active.** 🚀\nReady for data visualization.").send()
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -70,19 +66,17 @@ async def main(message: cl.Message):
         abs_data_path = os.path.join(DATA_DIR, current_file)
         try:
             df_temp = pd.read_csv(abs_data_path, nrows=1)
-            columns = df_temp.columns.tolist()
-            col_info = f"The ACTUAL columns in this file are: {columns}."
-        except Exception:
-            col_info = "Could not read columns."
+            col_info = f"Columns: {df_temp.columns.tolist()}."
+        except:
+            col_info = ""
 
         data_context = (
-            f"\n\nCONTEXT: Use dataset at '{abs_data_path}'. "
-            f"{col_info} "
-            f"STRICT RULE: Save plot ONLY to '{abs_chart_path}'. "
-            "Use 'plt.savefig' and 'plt.close()'. Write code to run immediately."
+            f"\n\nCONTEXT: Data at '{abs_data_path}'. {col_info} "
+            f"STRICT: Save plot to '{abs_chart_path}'. Use 'plt.savefig' and 'plt.close()'. "
+            "DO NOT use 'if __name__ == \"__main__\":'. Write straight-line code that executes immediately."
         )
     else:
-        data_context = "\n\nCONTEXT: Ask for a file first."
+        data_context = "\n\nCONTEXT: Ask for a file."
 
     task = message.content + data_context
     await cl.Message(author="Manager", content="Processing...").send()
@@ -92,10 +86,7 @@ async def main(message: cl.Message):
     
     async for output in app.astream({"task": task}, config=config):
         for node_name, node_state in output.items():
-            if node_name == "planner":
-                await cl.Message(author="Planner", content=f"**Plan:**\n{node_state['plan']}").send()
-            
-            elif node_name == "coder":
+            if node_name == "coder":
                 raw_code = node_state['code']
                 await cl.Message(author="Coder", language="python", content=raw_code).send()
                 
@@ -105,15 +96,17 @@ async def main(message: cl.Message):
                     with open(script_path, "w") as f:
                         f.write(clean_code)
                     
-                    # RUN CODE
-                    subprocess.run([sys.executable, script_path], capture_output=True, text=True, timeout=30)
+                    # RUN AND CAPTURE LOGS
+                    proc = subprocess.run([sys.executable, script_path], capture_output=True, text=True, timeout=30)
+                    if proc.stderr:
+                        await cl.Message(author="System", content=f"❌ **Script Error:**\n{proc.stderr}").send()
                 except Exception as e:
-                    await cl.Message(author="System", content=f"⚠️ Execution Error: {str(e)}").send()
+                    await cl.Message(author="System", content=f"⚠️ **Execution Failed:** {str(e)}").send()
             
             elif node_name == "executor":
-                # --- VITAL WAIT LOOP ---
+                # WAIT FOR DISK SYNC
                 found = False
-                for _ in range(10): # Try for 5 seconds total
+                for _ in range(10):
                     if os.path.exists(abs_chart_path):
                         found = True
                         break
@@ -121,8 +114,8 @@ async def main(message: cl.Message):
 
                 if found:
                     image = cl.Image(path=abs_chart_path, name="chart", display="inline")
-                    await cl.Message(author="Executor", content="📊 **Visualization Found:**", elements=[image]).send()
+                    await cl.Message(author="Executor", content="📊 **Here is your chart:**", elements=[image]).send()
                 else:
-                    await cl.Message(author="Executor", content=f"✅ **Done (No image found on disk).**").send()
+                    await cl.Message(author="Executor", content="✅ **Task complete, but no image was generated.**").send()
     
-    await cl.Message(author="Manager", content="Workflow Finished.").send()
+    await cl.Message(author="Manager", content="Finished.").send()
